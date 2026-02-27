@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pomodoro Timer</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root{
+    --bg:#fff;
+    --surface:#f5f5f5;
+    --primary:#000;
+    --secondary:#666;
+    --tertiary:#999;
+    --accent:#D6E000;
+    --divider:#e0e0e0;
+    --radius:8px;
+  }
+
+  body{
+    font-family:-apple-system,'SF Pro Text','Noto Sans JP','Helvetica Neue',sans-serif;
+    background:var(--bg);
+    color:var(--primary);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .app{
+    width:100%;
+    max-width:640px;
+    padding:24px 32px;
+    user-select:none;
+    display:flex;
+    align-items:center;
+    gap:40px;
+  }
+
+  .left{
+    flex-shrink:0;
+  }
+
+  .right{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:20px;
+    text-align:center;
+  }
+
+  /* Mode tabs */
+  .modes{
+    display:flex;
+    gap:4px;
+    background:var(--surface);
+    border-radius:var(--radius);
+    padding:4px;
+    width:100%;
+  }
+
+  .mode-btn{
+    flex:1;
+    padding:8px 4px;
+    border:none;
+    background:transparent;
+    color:var(--tertiary);
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    border-radius:6px;
+    transition:all .2s;
+    letter-spacing:.02em;
+  }
+
+  .mode-btn.active{
+    background:var(--primary);
+    color:#fff;
+  }
+
+  .mode-btn:not(.active):hover{
+    color:var(--primary);
+  }
+
+  /* Timer display */
+  .timer-ring{
+    position:relative;
+    width:180px;
+    height:180px;
+  }
+
+  .timer-ring svg{
+    transform:rotate(-90deg);
+    width:180px;
+    height:180px;
+  }
+
+  .track{
+    fill:none;
+    stroke:var(--surface);
+    stroke-width:6;
+  }
+
+  .progress{
+    fill:none;
+    stroke:var(--primary);
+    stroke-width:6;
+    stroke-linecap:round;
+    transition:stroke-dashoffset .5s linear, stroke .3s;
+  }
+
+  .progress.break-mode{
+    stroke:var(--accent);
+  }
+
+  .timer-text{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .time{
+    font-size:40px;
+    font-weight:700;
+    letter-spacing:2px;
+    font-variant-numeric:tabular-nums;
+    line-height:1;
+  }
+
+  .label{
+    font-size:12px;
+    color:var(--tertiary);
+    margin-top:8px;
+    font-weight:500;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+  }
+
+  /* Controls */
+  .controls{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:16px;
+  }
+
+  .btn{
+    border:none;
+    cursor:pointer;
+    transition:all .15s;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .btn:active{
+    transform:scale(.95);
+  }
+
+  .btn-primary{
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    background:var(--primary);
+    color:#fff;
+  }
+
+  .btn-primary:hover{
+    opacity:.85;
+  }
+
+  .btn-secondary{
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    background:var(--surface);
+    color:var(--secondary);
+  }
+
+  .btn-secondary:hover{
+    background:var(--divider);
+  }
+
+  .btn svg{
+    width:20px;
+    height:20px;
+    fill:currentColor;
+  }
+
+  .btn-primary svg{
+    width:24px;
+    height:24px;
+  }
+
+  /* Session dots */
+  .sessions{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+  }
+
+  .dot{
+    width:10px;
+    height:10px;
+    border-radius:50%;
+    border:2px solid var(--divider);
+    transition:all .3s;
+  }
+
+  .dot.filled{
+    background:var(--accent);
+    border-color:var(--accent);
+  }
+
+  .session-label{
+    font-size:12px;
+    color:var(--tertiary);
+    margin-left:8px;
+    font-weight:500;
+  }
+
+  /* Notification banner */
+  .notify-banner{
+    position:fixed;
+    top:12px;
+    left:50%;
+    transform:translateX(-50%) translateY(-60px);
+    background:var(--primary);
+    color:#fff;
+    padding:10px 20px;
+    border-radius:var(--radius);
+    font-size:13px;
+    font-weight:500;
+    opacity:0;
+    transition:all .3s ease;
+    pointer-events:none;
+    z-index:10;
+    white-space:nowrap;
+  }
+
+  .notify-banner.show{
+    transform:translateX(-50%) translateY(0);
+    opacity:1;
+  }
+
+  /* Compact for small Notion embeds */
+  @media(max-height:300px){
+    .app{padding:16px 24px;gap:24px}
+    .timer-ring{width:140px;height:140px}
+    .timer-ring svg{width:140px;height:140px}
+    .time{font-size:32px}
+    .right{gap:12px}
+    .btn-primary{width:48px;height:48px}
+    .btn-secondary{width:36px;height:36px}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Left: Timer ring -->
+  <div class="left">
+    <div class="timer-ring">
+      <svg viewBox="0 0 220 220">
+        <circle class="track" cx="110" cy="110" r="100"/>
+        <circle class="progress" cx="110" cy="110" r="100"
+          stroke-dasharray="628.318"
+          stroke-dashoffset="0"/>
+      </svg>
+      <div class="timer-text">
+        <div class="time" id="display">25:00</div>
+        <div class="label" id="modeLabel">FOCUS TIME</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Mode + Controls + Sessions -->
+  <div class="right">
+    <div class="modes">
+      <button class="mode-btn active" data-mode="work">WORK</button>
+      <button class="mode-btn" data-mode="short">SHORT</button>
+      <button class="mode-btn" data-mode="long">LONG</button>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-secondary" id="resetBtn" title="Reset">
+        <svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4C7.58 4 4.01 7.58 4.01 12S7.58 20 12 20c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+      </button>
+      <button class="btn btn-primary" id="playBtn" title="Start">
+        <svg viewBox="0 0 24 24" id="playIcon"><polygon points="8,5 19,12 8,19"/></svg>
+      </button>
+      <button class="btn btn-secondary" id="skipBtn" title="Skip">
+        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2z"/></svg>
+      </button>
+    </div>
+
+    <div class="sessions">
+      <div class="dot" data-session="1"></div>
+      <div class="dot" data-session="2"></div>
+      <div class="dot" data-session="3"></div>
+      <div class="dot" data-session="4"></div>
+      <span class="session-label" id="sessionLabel">0 / 4</span>
+    </div>
+  </div>
+</div>
+
+<div class="notify-banner" id="banner"></div>
+
+<script>
+const MODES = {
+  work:  { duration: 25 * 60, label: 'FOCUS TIME' },
+  short: { duration:  5 * 60, label: 'SHORT BREAK' },
+  long:  { duration: 15 * 60, label: 'LONG BREAK' },
+};
+
+const CIRCUMFERENCE = 2 * Math.PI * 100; // ~628.318
+
+const display    = document.getElementById('display');
+const modeLabel  = document.getElementById('modeLabel');
+const playBtn    = document.getElementById('playBtn');
+const resetBtn   = document.getElementById('resetBtn');
+const skipBtn    = document.getElementById('skipBtn');
+const progress   = document.querySelector('.progress');
+const modeBtns   = document.querySelectorAll('.mode-btn');
+const dots       = document.querySelectorAll('.dot');
+const sessionLbl = document.getElementById('sessionLabel');
+const banner     = document.getElementById('banner');
+
+let currentMode = 'work';
+let totalSeconds = MODES.work.duration;
+let remaining   = totalSeconds;
+let running     = false;
+let interval    = null;
+let sessions    = 0;
+
+// --- Audio ---
+function createBeep() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const now = ctx.currentTime;
+
+  [0, 0.2, 0.4].forEach(offset => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, now + offset);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.15);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now + offset);
+    osc.stop(now + offset + 0.15);
+  });
+}
+
+// --- Notification ---
+function requestNotifyPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function sendNotification(title, body) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍅</text></svg>' });
+  }
+  showBanner(body);
+}
+
+function showBanner(text) {
+  banner.textContent = text;
+  banner.classList.add('show');
+  setTimeout(() => banner.classList.remove('show'), 3000);
+}
+
+// --- Render ---
+function render() {
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  display.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+
+  const fraction = remaining / totalSeconds;
+  progress.style.strokeDashoffset = CIRCUMFERENCE * (1 - fraction);
+
+  const isBreak = currentMode !== 'work';
+  progress.classList.toggle('break-mode', isBreak);
+
+  // Update title
+  document.title = `${display.textContent} — ${MODES[currentMode].label}`;
+
+  // Play/pause icon
+  playBtn.innerHTML = running
+    ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg>';
+
+  // Session dots
+  dots.forEach((dot, i) => dot.classList.toggle('filled', i < sessions));
+  sessionLbl.textContent = `${sessions} / 4`;
+}
+
+// --- Timer logic ---
+function tick() {
+  if (remaining <= 0) {
+    stop();
+    onTimerEnd();
+    return;
+  }
+  remaining--;
+  render();
+}
+
+function start() {
+  if (remaining <= 0) return;
+  running = true;
+  interval = setInterval(tick, 1000);
+  render();
+  requestNotifyPermission();
+}
+
+function stop() {
+  running = false;
+  clearInterval(interval);
+  interval = null;
+  render();
+}
+
+function toggle() {
+  running ? stop() : start();
+}
+
+function reset() {
+  stop();
+  remaining = totalSeconds;
+  render();
+}
+
+function setMode(mode) {
+  stop();
+  currentMode = mode;
+  totalSeconds = MODES[mode].duration;
+  remaining = totalSeconds;
+
+  modeBtns.forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.mode === mode)
+  );
+  modeLabel.textContent = MODES[mode].label;
+  render();
+}
+
+function onTimerEnd() {
+  createBeep();
+
+  if (currentMode === 'work') {
+    sessions++;
+    if (sessions >= 4) {
+      sendNotification('Great work!', '4セッション完了！ロング休憩に入ろう');
+      sessions = 0;
+      setMode('long');
+    } else {
+      sendNotification('Well done!', `セッション${sessions}完了！休憩しよう`);
+      setMode('short');
+    }
+  } else {
+    sendNotification('Break over!', '集中モードに戻ろう');
+    setMode('work');
+  }
+
+  // Auto-start next
+  start();
+}
+
+function skip() {
+  if (currentMode === 'work') {
+    setMode(sessions >= 3 ? 'long' : 'short');
+  } else {
+    setMode('work');
+  }
+}
+
+// --- Events ---
+playBtn.addEventListener('click', toggle);
+resetBtn.addEventListener('click', reset);
+skipBtn.addEventListener('click', skip);
+modeBtns.forEach(btn =>
+  btn.addEventListener('click', () => setMode(btn.dataset.mode))
+);
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  if (e.code === 'KeyR') reset();
+});
+
+// Init
+render();
+</script>
+</body>
+</html>
