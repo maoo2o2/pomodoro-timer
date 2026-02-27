@@ -226,28 +226,54 @@
     font-weight:500;
   }
 
-  /* Notification banner */
-  .notify-banner{
+  /* Popup notification */
+  .popup{
     position:fixed;
-    top:12px;
+    top:50%;
     left:50%;
-    transform:translateX(-50%) translateY(-60px);
-    background:var(--primary);
-    color:#fff;
-    padding:10px 20px;
-    border-radius:var(--radius);
-    font-size:13px;
-    font-weight:500;
+    transform:translate(-50%,-50%) scale(.9);
+    background:#fff;
+    border:1px solid var(--divider);
+    border-radius:12px;
+    padding:24px 32px;
+    text-align:center;
+    z-index:100;
     opacity:0;
-    transition:all .3s ease;
     pointer-events:none;
-    z-index:10;
-    white-space:nowrap;
+    transition:all .25s ease;
   }
 
-  .notify-banner.show{
-    transform:translateX(-50%) translateY(0);
+  .popup.active{
     opacity:1;
+    pointer-events:auto;
+    transform:translate(-50%,-50%) scale(1);
+  }
+
+  .popup-title{
+    font-size:16px;
+    font-weight:700;
+    margin-bottom:4px;
+  }
+
+  .popup-msg{
+    font-size:13px;
+    color:var(--secondary);
+    margin-bottom:16px;
+  }
+
+  .popup-dismiss{
+    background:var(--primary);
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    padding:8px 24px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+  }
+
+  .popup-dismiss:hover{
+    opacity:.85;
   }
 
   /* Compact for small Notion embeds */
@@ -311,7 +337,11 @@
   </div>
 </div>
 
-<div class="notify-banner" id="banner"></div>
+<div class="popup" id="popup">
+  <div class="popup-title" id="popupTitle"></div>
+  <div class="popup-msg" id="popupMsg"></div>
+  <button class="popup-dismiss" id="popupDismiss">OK</button>
+</div>
 
 <script>
 const MODES = {
@@ -331,7 +361,10 @@ const progress   = document.querySelector('.progress');
 const modeBtns   = document.querySelectorAll('.mode-btn');
 const dots       = document.querySelectorAll('.dot');
 const sessionLbl = document.getElementById('sessionLabel');
-const banner     = document.getElementById('banner');
+const popup       = document.getElementById('popup');
+const popupTitle  = document.getElementById('popupTitle');
+const popupMsg    = document.getElementById('popupMsg');
+const popupDismiss= document.getElementById('popupDismiss');
 
 let currentMode = 'work';
 let totalSeconds = MODES.work.duration;
@@ -340,43 +373,54 @@ let running     = false;
 let interval    = null;
 let sessions    = 0;
 
-// --- Audio ---
-function createBeep() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const now = ctx.currentTime;
+// --- Audio (repeating alarm) ---
+let alarmCtx = null;
+let alarmInterval = null;
 
-  [0, 0.2, 0.4].forEach(offset => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.3, now + offset);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.15);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(now + offset);
-    osc.stop(now + offset + 0.15);
-  });
-}
-
-// --- Notification ---
-function requestNotifyPermission() {
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
+function playAlarm() {
+  alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+  function beepOnce() {
+    const now = alarmCtx.currentTime;
+    [0, 0.15, 0.3].forEach(offset => {
+      const osc = alarmCtx.createOscillator();
+      const gain = alarmCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.3, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.12);
+      osc.connect(gain).connect(alarmCtx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.12);
+    });
   }
+  beepOnce();
+  alarmInterval = setInterval(beepOnce, 2000);
 }
 
-function sendNotification(title, body) {
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, { body, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍅</text></svg>' });
-  }
-  showBanner(body);
+function stopAlarm() {
+  clearInterval(alarmInterval);
+  alarmInterval = null;
+  if (alarmCtx) { alarmCtx.close(); alarmCtx = null; }
 }
 
-function showBanner(text) {
-  banner.textContent = text;
-  banner.classList.add('show');
-  setTimeout(() => banner.classList.remove('show'), 3000);
+// --- Popup notification ---
+let pendingNext = null;
+
+function showPopup(title, msg, nextFn) {
+  popupTitle.textContent = title;
+  popupMsg.textContent = msg;
+  popup.classList.add('active');
+  pendingNext = nextFn;
+  playAlarm();
 }
+
+function dismissPopup() {
+  popup.classList.remove('active');
+  stopAlarm();
+  if (pendingNext) { pendingNext(); pendingNext = null; }
+}
+
+popupDismiss.addEventListener('click', dismissPopup);
 
 // --- Render ---
 function render() {
@@ -419,7 +463,6 @@ function start() {
   running = true;
   interval = setInterval(tick, 1000);
   render();
-  requestNotifyPermission();
 }
 
 function stop() {
@@ -453,25 +496,26 @@ function setMode(mode) {
 }
 
 function onTimerEnd() {
-  createBeep();
-
   if (currentMode === 'work') {
     sessions++;
     if (sessions >= 4) {
-      sendNotification('Great work!', '4セッション完了！ロング休憩に入ろう');
-      sessions = 0;
-      setMode('long');
+      showPopup('4セッション完了!', 'ロング休憩に入ろう', () => {
+        sessions = 0;
+        setMode('long');
+        start();
+      });
     } else {
-      sendNotification('Well done!', `セッション${sessions}完了！休憩しよう`);
-      setMode('short');
+      showPopup(`セッション${sessions}完了!`, '休憩しよう', () => {
+        setMode('short');
+        start();
+      });
     }
   } else {
-    sendNotification('Break over!', '集中モードに戻ろう');
-    setMode('work');
+    showPopup('休憩おわり!', '集中モードに戻ろう', () => {
+      setMode('work');
+      start();
+    });
   }
-
-  // Auto-start next
-  start();
 }
 
 function skip() {
