@@ -370,8 +370,43 @@ let currentMode = 'work';
 let totalSeconds = MODES.work.duration;
 let remaining   = totalSeconds;
 let running     = false;
-let interval    = null;
+let endTime     = null;   // wall-clock end timestamp (ms)
 let sessions    = 0;
+
+// --- Tick driver: Web Worker (preferred) or setInterval fallback ---
+let tickWorker = null;
+let tickInterval = null;
+
+function createTickWorker() {
+  try {
+    const code = 'setInterval(()=>postMessage(1),1000)';
+    const blob = new Blob([code], { type: 'application/javascript' });
+    const w = new Worker(URL.createObjectURL(blob));
+    // Quick sanity check — if constructor didn't throw, we're good
+    return w;
+  } catch (e) {
+    return null;
+  }
+}
+
+function startTick() {
+  if (tickWorker) {
+    tickWorker.onmessage = tick;
+  } else {
+    tickWorker = createTickWorker();
+    if (tickWorker) {
+      tickWorker.onmessage = tick;
+    } else {
+      // Fallback: plain setInterval (still uses wall-clock so accuracy is fine on resume)
+      tickInterval = setInterval(tick, 1000);
+    }
+  }
+}
+
+function stopTick() {
+  if (tickWorker) tickWorker.onmessage = null;
+  if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
+}
 
 // --- Audio (repeating alarm) ---
 let alarmCtx = null;
@@ -447,28 +482,35 @@ function render() {
   sessionLbl.textContent = `${sessions} / 4`;
 }
 
-// --- Timer logic ---
+// --- Timer logic (wall-clock based) ---
 function tick() {
+  if (!running) return;
+  remaining = Math.ceil((endTime - Date.now()) / 1000);
   if (remaining <= 0) {
+    remaining = 0;
     stop();
     onTimerEnd();
     return;
   }
-  remaining--;
   render();
 }
 
 function start() {
   if (remaining <= 0) return;
   running = true;
-  interval = setInterval(tick, 1000);
+  endTime = Date.now() + remaining * 1000;
+  startTick();
   render();
 }
 
 function stop() {
   running = false;
-  clearInterval(interval);
-  interval = null;
+  stopTick();
+  // Snapshot accurate remaining on pause
+  if (endTime) {
+    remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+    endTime = null;
+  }
   render();
 }
 
@@ -479,6 +521,7 @@ function toggle() {
 function reset() {
   stop();
   remaining = totalSeconds;
+  endTime = null;
   render();
 }
 
@@ -487,6 +530,7 @@ function setMode(mode) {
   currentMode = mode;
   totalSeconds = MODES[mode].duration;
   remaining = totalSeconds;
+  endTime = null;
 
   modeBtns.forEach(btn =>
     btn.classList.toggle('active', btn.dataset.mode === mode)
@@ -538,6 +582,11 @@ modeBtns.forEach(btn =>
 document.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); toggle(); }
   if (e.code === 'KeyR') reset();
+});
+
+// Recover on visibility change — immediately sync display when tab/iframe becomes visible
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && running) tick();
 });
 
 // Init
