@@ -287,8 +287,12 @@
   }
 
   @keyframes breathe-ring{
-    0%,100%{r:108;opacity:0}
-    33.33%{r:120;opacity:.5}
+    0%,100%{r:108;opacity:.15}
+    50%{r:120;opacity:.5}
+  }
+
+  .breath-ring.work-mode{
+    stroke:var(--primary);
   }
 
   /* Break guide — tips */
@@ -510,12 +514,15 @@ const breakTips  = document.getElementById('breakTips');
 
 function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 
-function startBreathGuide(){
-  breakTips.textContent = pick(BREAK_TIPS.body) + '\n' + pick(BREAK_TIPS.refresh);
-  breakTips.classList.add('active');
+function startBreathGuide(isWork){
+  if (!isWork) {
+    breakTips.textContent = pick(BREAK_TIPS.body) + '\n' + pick(BREAK_TIPS.refresh);
+    breakTips.classList.add('active');
+  }
+  breathRing.classList.toggle('work-mode', isWork);
   breathRing.style.animation = 'none';
   void breathRing.offsetHeight;
-  breathRing.style.animation = 'breathe-ring 12s ease-in-out infinite';
+  breathRing.style.animation = 'breathe-ring 10s ease-in-out infinite';
 }
 
 function stopBreathGuide(){
@@ -566,12 +573,14 @@ function start() {
   running = true;
   endTime = Date.now() + remaining * 1000;
   startTick();
+  startBreathGuide(currentMode === 'work');
   render();
 }
 
 function stop() {
   running = false;
   stopTick();
+  stopBreathGuide();
   // Snapshot accurate remaining on pause
   if (endTime) {
     remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
@@ -602,7 +611,7 @@ function setMode(mode) {
     btn.classList.toggle('active', btn.dataset.mode === mode)
   );
   modeLabel.textContent = MODES[mode].label;
-  mode !== 'work' ? startBreathGuide() : stopBreathGuide();
+  mode !== 'work' ? startBreathGuide(false) : stopBreathGuide();
   render();
 }
 
