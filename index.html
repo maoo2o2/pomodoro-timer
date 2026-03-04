@@ -96,6 +96,7 @@
     transform:rotate(-90deg);
     width:180px;
     height:180px;
+    overflow:visible;
   }
 
   .track{
@@ -276,6 +277,36 @@
     opacity:.85;
   }
 
+  /* Break guide — breathing ring */
+  .breath-ring{
+    fill:none;
+    stroke:var(--accent);
+    stroke-width:3;
+    opacity:0;
+    pointer-events:none;
+  }
+
+  @keyframes breathe-ring{
+    0%,100%{r:108;opacity:0}
+    33.33%{r:120;opacity:.5}
+  }
+
+  /* Break guide — tips */
+  .break-tips{
+    font-size:11px;
+    color:var(--tertiary);
+    margin-top:6px;
+    text-align:center;
+    line-height:1.5;
+    white-space:pre-line;
+    opacity:0;
+    transition:opacity .3s;
+  }
+
+  .break-tips.active{
+    opacity:1;
+  }
+
   /* Compact for small Notion embeds */
   @media(max-height:300px){
     .app{padding:16px 24px;gap:24px}
@@ -285,6 +316,7 @@
     .right{gap:12px}
     .btn-primary{width:48px;height:48px}
     .btn-secondary{width:36px;height:36px}
+
   }
 </style>
 </head>
@@ -296,6 +328,7 @@
     <div class="timer-ring">
       <svg viewBox="0 0 220 220">
         <circle class="track" cx="110" cy="110" r="100"/>
+        <circle class="breath-ring" id="breathRing" cx="110" cy="110" r="108"/>
         <circle class="progress" cx="110" cy="110" r="100"
           stroke-dasharray="628.318"
           stroke-dashoffset="0"/>
@@ -334,6 +367,7 @@
       <div class="dot" data-session="4"></div>
       <span class="session-label" id="sessionLabel">0 / 4</span>
     </div>
+    <div class="break-tips" id="breakTips"></div>
   </div>
 </div>
 
@@ -348,6 +382,19 @@ const MODES = {
   work:  { duration: 25 * 60, label: 'FOCUS TIME' },
   short: { duration:  5 * 60, label: 'SHORT BREAK' },
   long:  { duration: 15 * 60, label: 'LONG BREAK' },
+};
+
+const BREAK_TIPS = {
+  body: [
+    '腕を大きく回す','首をゆっくり回す','肩を上げてストンと落とす',
+    '立ち上がって伸びをする','手首をぐるぐる回す','背すじを伸ばす',
+    '目を閉じて10秒キープ','足首をぐるぐる回す','手のひらをギュッと握って開く',
+  ],
+  refresh: [
+    'お茶を淹れる','窓を開けて外の空気を吸う',
+    '水を一杯飲む','好きな曲を1曲聴く','窓の外をぼーっと眺める',
+    '机の上を軽く片付ける','深呼吸しながら窓の外を見る',
+  ],
 };
 
 const CIRCUMFERENCE = 2 * Math.PI * 100; // ~628.318
@@ -457,6 +504,25 @@ function dismissPopup() {
 
 popupDismiss.addEventListener('click', dismissPopup);
 
+// --- Break guide (breathing ring + tips) ---
+const breathRing = document.getElementById('breathRing');
+const breakTips  = document.getElementById('breakTips');
+
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+function startBreathGuide(){
+  breakTips.textContent = pick(BREAK_TIPS.body) + '\n' + pick(BREAK_TIPS.refresh);
+  breakTips.classList.add('active');
+  breathRing.style.animation = 'none';
+  void breathRing.offsetHeight;
+  breathRing.style.animation = 'breathe-ring 12s ease-in-out infinite';
+}
+
+function stopBreathGuide(){
+  breakTips.classList.remove('active');
+  breathRing.style.animation = '';
+}
+
 // --- Render ---
 function render() {
   const mins = Math.floor(remaining / 60);
@@ -536,6 +602,7 @@ function setMode(mode) {
     btn.classList.toggle('active', btn.dataset.mode === mode)
   );
   modeLabel.textContent = MODES[mode].label;
+  mode !== 'work' ? startBreathGuide() : stopBreathGuide();
   render();
 }
 
